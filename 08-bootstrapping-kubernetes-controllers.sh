@@ -23,7 +23,7 @@ sudo mv ca.pem ca-key.pem kubernetes-key.pem kubernetes.pem \
   encryption-config.yaml /var/lib/kubernetes/
 EOF
 
-cat <<EOF > kube-apiserver.service
+cat << EOF > kube-apiserver.service
 [Unit]
 Description=Kubernetes API Server
 Documentation=https://github.com/kubernetes/kubernetes
@@ -160,3 +160,79 @@ kubectl get componentstatuses --kubeconfig admin.kubeconfig
 curl -H "Host: kubernetes.default.svc.cluster.local" -i http://127.0.0.1/healthz
 EOF
 done
+
+ip=$(openstack server show controller-0 -f value -c addresses | cut -f2 -d' ')
+scp kubernetes.default.svc.cluster.local ubuntu@${ip}:
+ssh ubuntu@${ip} sudo mv kubernetes.default.svc.cluster.local /etc/nginx/sites-available/kubernetes.default.svc.cluster.local
+
+ssh ubuntu@${ip} << EOF
+cat <<EOF1 | kubectl apply --kubeconfig admin.kubeconfig -f -
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRole
+metadata:
+  annotations:
+    rbac.authorization.kubernetes.io/autoupdate: "true"
+  labels:
+    kubernetes.io/bootstrapping: rbac-defaults
+  name: system:kube-apiserver-to-kubelet
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - nodes/proxy
+      - nodes/stats
+      - nodes/log
+      - nodes/spec
+      - nodes/metrics
+    verbs:
+      - "*"
+EOF1
+
+cat <<EOF1 | kubectl apply --kubeconfig admin.kubeconfig -f -
+apiVersion: rbac.authorization.k8s.io/v1beta1
+kind: ClusterRoleBinding
+metadata:
+  name: system:kube-apiserver
+  namespace: ""
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:kube-apiserver-to-kubelet
+subjects:
+  - apiGroup: rbac.authorization.k8s.io
+    kind: User
+    name: kubernetes
+EOF1
+
+EOF
+
+openstack server create k8s-lb --image ubuntu-bionic --flavor m1.small --key-name mykey \
+  --network kubernetes-the-hard-way --user-data user-data.txt \
+  --security-group kubernetes-the-hard-way-allow-internal
+ip=$(openstack floating ip list --long | grep k8s-public-ip | cut -d'|' -f3 | sed 's/ //g')
+openstack server add floating ip k8s-lb ${ip}
+
+echo "Giving instances time to become available..."
+sleep 120
+
+ssh ubuntu@${ip} << EOF
+sudo apt-get install -y haproxy
+cat << EOF1 >> haproxy.cfg
+frontend localhost
+    bind *:6443
+    option tcplog
+    mode tcp
+    default_backend nodes
+
+backend nodes
+    mode tcp
+    balance roundrobin
+    option ssl-hello-chk
+    server controller-0 10.240.0.10:6443 check
+    server controller-1 10.240.0.11:6443 check
+    server controller-2 10.240.0.12:6443 check
+EOF1
+sudo cp /etc/haproxy/haproxy.cfg /etc/haproxy/haproxy.cfg.original
+sudo mv haproxy.cfg /etc/haproxy/haproxy.cfg
+sudo systemctl restart haproxy
+EOF

@@ -176,7 +176,8 @@ cfssl gencert \
   -profile=kubernetes \
   kube-scheduler-csr.json | cfssljson -bare kube-scheduler
 
-KUBERNETES_PUBLIC_ADDRESS=$(openstack floating ip create public1 -c floating_ip_address -f value)
+KUBERNETES_PUBLIC_ADDRESS=$(openstack floating ip create public1 -c floating_ip_address -f value \
+                            --description 'k8s-public-ip')
 
 cat > kubernetes-csr.json <<EOF
 {
@@ -232,7 +233,7 @@ cfssl gencert \
   service-account-csr.json | cfssljson -bare service-account
 
 echo "Giving instances time to become available..."
-sleep 60
+sleep 120
 
 for instance in worker-0 worker-1 worker-2; do
   ip=$(openstack server show ${instance} -f value -c addresses | cut -f2 -d' ')
