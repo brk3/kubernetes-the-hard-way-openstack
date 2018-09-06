@@ -7,3 +7,4 @@
 . 06-data-encryption-keys.sh
 . 07-bootstrapping-etcd.sh
 . 08-bootstrapping-kubernetes-controllers.sh
+. 09-bootstrapping-kubernetes-workers.sh
