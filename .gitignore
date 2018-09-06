@@ -1,3 +1,8 @@
 *.service
 *.local
 *.yaml
+*.pem
+*.json
+*.kubeconfig
+*.csr
+*.txt

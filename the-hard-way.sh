@@ -8,3 +8,4 @@
 . 07-bootstrapping-etcd.sh
 . 08-bootstrapping-kubernetes-controllers.sh
 . 09-bootstrapping-kubernetes-workers.sh
+. 10-configuring-kubectl.sh
